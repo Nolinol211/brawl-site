@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block titre %}Profil joueur - Brawl Analytics{% endblock %}
+
+{% block contenu %}
+<h1>Profil d'un joueur</h1>
+
+<form class="recherche" method="get" action="{{ url_for('joueur') }}">
+    <input type="text" name="tag" value="{{ tag }}" placeholder="Tag du joueur, ex : #2PP0Q8" required>
+    <button type="submit">Chercher</button>
+</form>
+<p class="intro">Ton tag se trouve dans le jeu, sous ton nom, dans ton profil.</p>
+
+{% if erreur %}
+<p class="erreur">{{ erreur }}</p>
+{% endif %}
+
+{% if joueur %}
+<div class="profil">
+    <h2 style="color: {{ '#' + joueur.nameColor[4:] if joueur.nameColor else '#feca57' }}">{{ joueur.name }}</h2>
+    <p class="intro">{{ joueur.tag }}{% if joueur.club and joueur.club.name %} • Club : {{ joueur.club.name }}{% endif %}</p>
+
+    <div class="stats">
+        <div class="stat"><span>{{ joueur.trophies }}</span>Trophées</div>
+        <div class="stat"><span>{{ joueur.highestTrophies }}</span>Record</div>
+        <div class="stat"><span>{{ joueur.expLevel }}</span>Niveau</div>
+        <div class="stat"><span>{{ joueur["3vs3Victories"] }}</span>Victoires 3v3</div>
+        <div class="stat"><span>{{ joueur.soloVictories }}</span>Victoires solo</div>
+        <div class="stat"><span>{{ joueur.duoVictories }}</span>Victoires duo</div>
+    </div>
+
+    <h2>Brawlers ({{ joueur.brawlers|length }})</h2>
+    <table>
+        <tr><th>#</th><th>Brawler</th><th>Puissance</th><th>Trophées</th><th>Record</th></tr>
+        {% for b in joueur.brawlers %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ b.name|title }}</td>
+            <td>{{ b.power }}</td>
+            <td>{{ b.trophies }}</td>
+            <td>{{ b.highestTrophies }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endif %}
+{% endblock %}

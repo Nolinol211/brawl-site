@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block titre %}Tier list - Brawl Analytics{% endblock %}
+
+{% block contenu %}
+<h1>Tier list</h1>
+
+{% for rang, brawlers in tiers.items() %}
+<div class="tier">
+    <div class="rang rang-{{ rang }}">{{ rang }}</div>
+    <div class="liste">
+        {% for nom in brawlers %}
+        <span class="brawler">{{ nom }}</span>
+        {% endfor %}
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block titre %}Brawl Analytics{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav>
+        <a class="logo" href="{{ url_for('accueil') }}">Brawl Analytics</a>
+        <a href="{{ url_for('accueil') }}">Accueil</a>
+        <a href="{{ url_for('tierlist') }}">Tier list</a>
+        <a href="{{ url_for('joueur') }}">Joueur</a>
+    </nav>
+
+    <main>
+        {% block contenu %}{% endblock %}
+    </main>
+
+    <footer>Site de fans, non affilié à Supercell.</footer>
+</body>
+</html>
