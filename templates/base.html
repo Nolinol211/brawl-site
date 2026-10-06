@@ -3,15 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block titre %}Brawl Analytics{% endblock %}</title>
+    <title>{% block titre %}Brawl Analytics - Statistiques Brawl Stars{% endblock %}</title>
+    <meta name="description" content="Analyse de joueurs, brawlers et modes de jeu sur Brawl Stars.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Lilita+One&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <nav>
-        <a class="logo" href="{{ url_for('accueil') }}">Brawl Analytics</a>
+        <a class="logo" href="{{ url_for('accueil') }}">⭐ Brawl Analytics</a>
         <a href="{{ url_for('accueil') }}">Accueil</a>
         <a href="{{ url_for('tierlist') }}">Tier list</a>
-        <a href="{{ url_for('joueur') }}">Joueur</a>
     </nav>
 
     <main>

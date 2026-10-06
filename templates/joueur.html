@@ -1,47 +1,129 @@
 {% extends "base.html" %}
 
-{% block titre %}Profil joueur - Brawl Analytics{% endblock %}
+{% block titre %}{{ joueur.name }} - Brawl Analytics{% endblock %}
 
 {% block contenu %}
-<h1>Profil d'un joueur</h1>
-
-<form class="recherche" method="get" action="{{ url_for('joueur') }}">
-    <input type="text" name="tag" value="{{ tag }}" placeholder="Tag du joueur, ex : #2PP0Q8" required>
-    <button type="submit">Chercher</button>
+<form class="recherche petit" method="get" action="{{ url_for('joueur') }}">
+    <input type="text" name="tag" placeholder="Chercher un autre joueur : #TAG" required autocomplete="off">
+    <button type="submit">GO</button>
 </form>
-<p class="intro">Ton tag se trouve dans le jeu, sous ton nom, dans ton profil.</p>
 
-{% if erreur %}
-<p class="erreur">{{ erreur }}</p>
-{% endif %}
-
-{% if joueur %}
-<div class="profil">
-    <h2 style="color: {{ '#' + joueur.nameColor[4:] if joueur.nameColor else '#feca57' }}">{{ joueur.name }}</h2>
-    <p class="intro">{{ joueur.tag }}{% if joueur.club and joueur.club.name %} • Club : {{ joueur.club.name }}{% endif %}</p>
-
-    <div class="stats">
-        <div class="stat"><span>{{ joueur.trophies }}</span>Trophées</div>
-        <div class="stat"><span>{{ joueur.highestTrophies }}</span>Record</div>
-        <div class="stat"><span>{{ joueur.expLevel }}</span>Niveau</div>
-        <div class="stat"><span>{{ joueur["3vs3Victories"] }}</span>Victoires 3v3</div>
-        <div class="stat"><span>{{ joueur.soloVictories }}</span>Victoires solo</div>
-        <div class="stat"><span>{{ joueur.duoVictories }}</span>Victoires duo</div>
+<!-- ===== Carte d'identité ===== -->
+<section class="identite">
+    <div class="avatar">{{ grade.emoji }}</div>
+    <div class="identite-texte">
+        <h1 class="nom">{{ joueur.name }}</h1>
+        <div class="sous-nom">{{ joueur.tag }}{% if joueur.club and joueur.club.name %} · 🛡️ {{ joueur.club.name }}{% endif %}</div>
+        <div class="grade">{{ grade.emoji }} {{ grade.nom }}</div>
+        <div class="barre"><div class="barre-remplie" style="width: {{ grade.pourcent }}%"></div></div>
+        <div class="barre-texte">
+            {% if grade.suivant %}Encore <b>{{ grade.restants }}</b> 🏆 pour devenir « {{ grade.suivant }} »
+            {% else %}Grade maximum atteint !{% endif %}
+        </div>
     </div>
+</section>
 
-    <h2>Brawlers ({{ joueur.brawlers|length }})</h2>
-    <table>
-        <tr><th>#</th><th>Brawler</th><th>Puissance</th><th>Trophées</th><th>Record</th></tr>
-        {% for b in joueur.brawlers %}
-        <tr>
-            <td>{{ loop.index }}</td>
-            <td>{{ b.name|title }}</td>
-            <td>{{ b.power }}</td>
-            <td>{{ b.trophies }}</td>
-            <td>{{ b.highestTrophies }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+{% if badges %}
+<div class="badges">
+    {% for emoji, texte in badges %}<span class="badge">{{ emoji }} {{ texte }}</span>{% endfor %}
 </div>
 {% endif %}
+
+<!-- ===== Trophées de la semaine ===== -->
+{% if analyse %}
+<div class="semaine">
+    <div class="semaine-emoji">{{ analyse.titre_semaine.emoji }}</div>
+    <div class="semaine-texte">
+        <div class="semaine-titre">{{ analyse.titre_semaine.nom }}</div>
+        <div class="semaine-detail">
+            <span class="{{ 'vert' if analyse.semaine >= 0 else 'rouge' }}">{{ '%+d' % analyse.semaine }} 🏆</span>
+            sur les 7 derniers jours · {{ analyse.nb_semaine }} combat{{ 's' if analyse.nb_semaine > 1 }}
+        </div>
+        {% if analyse.tronque %}
+        <small>L'API ne donne que les 25 derniers combats (jusqu'à il y a {{ analyse.couverture }}) : le vrai total de la semaine peut être plus élevé.</small>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ===== Stats ===== -->
+<div class="stats">
+    <div class="stat"><span>{{ "{:,}".format(joueur.trophies).replace(",", " ") }}</span>🏆 Trophées</div>
+    <div class="stat"><span>{{ "{:,}".format(joueur.highestTrophies).replace(",", " ") }}</span>🥇 Record</div>
+    <div class="stat"><span>{{ joueur.expLevel }}</span>⭐ Niveau</div>
+    <div class="stat"><span>{{ joueur["3vs3Victories"] }}</span>⚔️ Victoires 3v3</div>
+    <div class="stat"><span>{{ joueur.soloVictories }}</span>🎯 Victoires solo</div>
+    <div class="stat"><span>{{ joueur.duoVictories }}</span>🤝 Victoires duo</div>
+    <div class="stat"><span>{{ joueur.brawlers|length }}</span>🎭 Brawlers</div>
+    <div class="stat"><span>{{ joueur.moyenne }}</span>📐 Moyenne par brawler</div>
+</div>
+
+<!-- ===== Derniers combats ===== -->
+{% if analyse and analyse.combats %}
+<h2 class="titre-section">⚔️ Derniers combats</h2>
+
+{% if analyse.total %}
+<div class="bilan">
+    <div class="bilan-haut">
+        <div class="bilan-grade">{{ analyse.grade.emoji }} {{ analyse.grade.nom }}</div>
+        <div class="bilan-taux">{{ analyse.taux }}% de victoires</div>
+    </div>
+    <div class="jauge">
+        <div class="jauge-v" style="width: {{ analyse.pct_v }}%"></div>
+        <div class="jauge-d" style="width: {{ analyse.pct_d }}%"></div>
+    </div>
+    <div class="bilan-chiffres">
+        <span class="vert">{{ analyse.victoires }} V</span>
+        <span class="rouge">{{ analyse.defaites }} D</span>
+        {% if analyse.egalites %}<span>{{ analyse.egalites }} égalités</span>{% endif %}
+        <span>sur {{ analyse.total }} combats</span>
+        <span class="{{ 'vert' if analyse.semaine >= 0 else 'rouge' }}">{{ '%+d' % analyse.semaine }} 🏆 sur 7 jours</span>
+    </div>
+</div>
+{% endif %}
+
+<div class="combats">
+    {% for c in analyse.combats %}
+    <div class="combat {{ c.classe }}">
+        <div class="combat-emoji">{{ c.emoji }}</div>
+        <div class="combat-infos">
+            <b>{{ c.libelle }}</b> · {{ c.mode }}
+            <small>{{ c.map }} · avec {{ c.brawler }} · {{ c.quand }}</small>
+        </div>
+        <div class="combat-trophees">{% if c.trophees %}{{ '%+d' % c.trophees }} 🏆{% endif %}</div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if analyse.par_brawler %}
+<h2 class="titre-section">🎭 Tes brawlers du moment</h2>
+<div class="par-brawler">
+    {% for b in analyse.par_brawler %}
+    <div class="ligne-brawler">
+        <span class="lb-nom">{{ b.nom }}</span>
+        <div class="jauge fine"><div class="jauge-v" style="width: {{ b.taux }}%"></div></div>
+        <span class="lb-taux">{{ b.taux }}% ({{ b.victoires }}/{{ b.parties }})</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% elif not analyse %}
+<p class="intro">Les derniers combats ne sont pas disponibles pour le moment.</p>
+{% endif %}
+
+<!-- ===== Brawlers ===== -->
+<h2 class="titre-section">🏆 Trophées par brawler ({{ joueur.brawlers|length }})</h2>
+<div class="grille-brawlers">
+    {% for b in joueur.brawlers %}
+    <div class="brawler-carte">
+        <div class="bc-haut">
+            <span class="bc-rang">#{{ loop.index }}</span>
+            <span class="bc-nom">{{ b.name|title }}</span>
+            <span class="bc-niv {{ 'max' if b.power >= 11 }}">Niv. {{ b.power }}</span>
+        </div>
+        <div class="jauge fine"><div class="jauge-trophees" style="width: {{ (b.trophies / joueur.max_trophees * 100)|round|int }}%"></div></div>
+        <div class="bc-bas">🏆 {{ b.trophies }} <small>(record {{ b.highestTrophies }})</small></div>
+    </div>
+    {% endfor %}
+</div>
 {% endblock %}

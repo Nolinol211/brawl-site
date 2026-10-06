@@ -1,18 +1,383 @@
 {% extends "base.html" %}
 
-{% block titre %}Tier list - Brawl Analytics{% endblock %}
+{% block titre %}Tier list maker - Brawl Analytics{% endblock %}
 
 {% block contenu %}
-<h1>Tier list</h1>
+<h1>Tier list maker</h1>
+<p class="intro">Glisse les brawlers dans les classes (ou clique sur un brawler, puis sur une classe). Clique sur le nom d'une classe pour le changer, et sur la pastille pour sa couleur.</p>
 
-{% for rang, brawlers in tiers.items() %}
-<div class="tier">
-    <div class="rang rang-{{ rang }}">{{ rang }}</div>
-    <div class="liste">
-        {% for nom in brawlers %}
-        <span class="brawler">{{ nom }}</span>
-        {% endfor %}
-    </div>
+<div class="tl-barre">
+    <input id="tl-titre" class="tl-titre" value="Ma tier list" maxlength="60" aria-label="Titre de la tier list">
+    <button id="tl-ajouter" type="button">➕ Ajouter une classe</button>
+    <button id="tl-vider" type="button" class="secondaire">↩️ Tout remettre dans la pile</button>
+    <button id="tl-reset" type="button" class="secondaire">♻️ Réinitialiser</button>
 </div>
-{% endfor %}
+
+<div id="tl-tiers"></div>
+
+<div class="tl-pile-entete">
+    <h2>🎭 Brawlers à classer <small id="tl-compteur"></small></h2>
+    <input type="search" id="tl-recherche" placeholder="Chercher un brawler..." autocomplete="off">
+</div>
+<div id="tl-pile" class="tl-zone pile"></div>
+<p id="tl-message" class="intro"></p>
+
+<script>
+(function () {
+    const CLE = "bs_tierlist_v1";
+    const MAX_CLASSES = 12;
+    const DEFAUT = [
+        { nom: "S", couleur: "#ff4d5e" },
+        { nom: "A", couleur: "#ff9f43" },
+        { nom: "B", couleur: "#ffd31f" },
+        { nom: "C", couleur: "#3ddc5a" },
+        { nom: "D", couleur: "#54a0ff" },
+    ];
+    const COULEURS = ["#a55eea", "#1dd1a1", "#ff6b81", "#48dbfb", "#feca57", "#ff9ff3", "#8395a7", "#ee5253"];
+
+    const elTiers = document.getElementById("tl-tiers");
+    const elPile = document.getElementById("tl-pile");
+    const elTitre = document.getElementById("tl-titre");
+    const elRecherche = document.getElementById("tl-recherche");
+    const elCompteur = document.getElementById("tl-compteur");
+    const elMessage = document.getElementById("tl-message");
+
+    let brawlers = [];
+    let parId = {};
+    let selection = null;      // brawler sélectionné par clic
+    let glisse = null;         // glisser-déposer en cours
+    let bloquerClic = false;
+
+    // ---------- Petits outils ----------
+    function message(texte) { elMessage.textContent = texte || ""; }
+
+    function creerTuile(b) {
+        const tuile = document.createElement("div");
+        tuile.className = "bz";
+        tuile.dataset.id = b.id;
+        tuile.dataset.nom = b.nom.toLowerCase();
+        tuile.title = b.nom;
+
+        const img = document.createElement("img");
+        img.src = b.image;
+        img.alt = "";
+        img.loading = "lazy";
+        img.draggable = false;
+        img.addEventListener("error", function () {
+            const lettre = document.createElement("div");
+            lettre.className = "bz-lettre";
+            lettre.textContent = b.nom.charAt(0);
+            img.replaceWith(lettre);
+        });
+
+        const nom = document.createElement("span");
+        nom.textContent = b.nom;
+        tuile.append(img, nom);
+        return tuile;
+    }
+
+    // ---------- Lecture / sauvegarde ----------
+    function lire() {
+        return Array.from(elTiers.querySelectorAll(".tl-tier")).map(function (ligne) {
+            return {
+                nom: ligne.querySelector(".tl-nom").textContent.trim() || "?",
+                couleur: ligne.querySelector(".tl-couleur").value,
+                ids: Array.from(ligne.querySelectorAll(".bz")).map(function (x) { return Number(x.dataset.id); }),
+            };
+        });
+    }
+
+    function sauver() {
+        try {
+            localStorage.setItem(CLE, JSON.stringify({ titre: elTitre.value, tiers: lire() }));
+        } catch (e) { /* stockage indisponible : tant pis */ }
+    }
+
+    function charger() {
+        try {
+            const brut = JSON.parse(localStorage.getItem(CLE));
+            if (brut && Array.isArray(brut.tiers) && brut.tiers.length) {
+                if (typeof brut.titre === "string") elTitre.value = brut.titre;
+                return brut.tiers.slice(0, MAX_CLASSES).map(function (t) {
+                    return {
+                        nom: String(t.nom || "?").slice(0, 30),
+                        couleur: /^#[0-9a-f]{6}$/i.test(t.couleur) ? t.couleur : "#8395a7",
+                        ids: Array.isArray(t.ids) ? t.ids : [],
+                    };
+                });
+            }
+        } catch (e) { /* données illisibles : on repart de zéro */ }
+        return DEFAUT.map(function (t) { return { nom: t.nom, couleur: t.couleur, ids: [] }; });
+    }
+
+    // ---------- Construction de la page ----------
+    function creerLigne(t, index, total) {
+        const ligne = document.createElement("div");
+        ligne.className = "tl-tier";
+        ligne.innerHTML =
+            '<div class="tl-label"><div class="tl-nom" contenteditable="true" spellcheck="false" ' +
+            'role="textbox" aria-label="Nom de la classe"></div></div>' +
+            '<div class="tl-zone"></div>' +
+            '<div class="tl-outils">' +
+            '<input type="color" class="tl-couleur" title="Couleur de la classe" aria-label="Couleur de la classe">' +
+            '<button type="button" class="mini" data-act="haut" title="Monter">▲</button>' +
+            '<button type="button" class="mini" data-act="bas" title="Descendre">▼</button>' +
+            '<button type="button" class="mini danger" data-act="suppr" title="Supprimer la classe">✖</button>' +
+            '</div>';
+
+        ligne.querySelector(".tl-nom").textContent = t.nom;
+        ligne.querySelector(".tl-label").style.background = t.couleur;
+        ligne.querySelector(".tl-couleur").value = t.couleur;
+        ligne.querySelector('[data-act="haut"]').disabled = index === 0;
+        ligne.querySelector('[data-act="bas"]').disabled = index === total - 1;
+
+        const zone = ligne.querySelector(".tl-zone");
+        t.ids.forEach(function (id) {
+            if (parId[id]) zone.append(creerTuile(parId[id]));
+        });
+        return ligne;
+    }
+
+    function construire(tiers) {
+        selection = null;
+        message("");
+        elTiers.textContent = "";
+        elPile.textContent = "";
+
+        const places = new Set();
+        tiers.forEach(function (t, i) {
+            // un brawler ne peut être que dans une seule classe
+            t.ids = t.ids.filter(function (id) {
+                if (!parId[id] || places.has(id)) return false;
+                places.add(id);
+                return true;
+            });
+            elTiers.append(creerLigne(t, i, tiers.length));
+        });
+
+        brawlers.forEach(function (b) {
+            if (!places.has(b.id)) elPile.append(creerTuile(b));
+        });
+        appliquerFiltre();
+    }
+
+    function appliquerFiltre() {
+        const q = elRecherche.value.trim().toLowerCase();
+        let visibles = 0;
+        elPile.querySelectorAll(".bz").forEach(function (tuile) {
+            const montre = !q || tuile.dataset.nom.indexOf(q) !== -1;
+            tuile.classList.toggle("cache", !montre);
+            if (montre) visibles++;
+        });
+        const restants = elPile.querySelectorAll(".bz").length;
+        elCompteur.textContent = restants
+            ? "(" + (q ? visibles + " trouvés sur " : "") + restants + " restants)"
+            : "(tous classés, bravo !)";
+    }
+
+    // ---------- Actions ----------
+    elTiers.addEventListener("click", function (e) {
+        const bouton = e.target.closest("button[data-act]");
+        if (!bouton) return;
+        const ligne = bouton.closest(".tl-tier");
+        const lignes = Array.from(elTiers.children);
+        const i = lignes.indexOf(ligne);
+        const tiers = lire();
+
+        if (bouton.dataset.act === "haut" && i > 0) {
+            tiers.splice(i - 1, 0, tiers.splice(i, 1)[0]);
+        } else if (bouton.dataset.act === "bas" && i < tiers.length - 1) {
+            tiers.splice(i + 1, 0, tiers.splice(i, 1)[0]);
+        } else if (bouton.dataset.act === "suppr") {
+            if (tiers.length <= 1) { message("Il faut garder au moins une classe."); return; }
+            tiers.splice(i, 1);   // ses brawlers retournent dans la pile
+        }
+        message("");
+        construire(tiers);
+        sauver();
+    });
+
+    elTiers.addEventListener("input", function (e) {
+        if (e.target.classList.contains("tl-couleur")) {
+            e.target.closest(".tl-tier").querySelector(".tl-label").style.background = e.target.value;
+        }
+        if (e.target.classList.contains("tl-nom") && e.target.textContent.length > 30) {
+            e.target.textContent = e.target.textContent.slice(0, 30);
+        }
+        sauver();
+    });
+
+    // Nom de classe : Entrée valide, et on colle du texte brut uniquement
+    elTiers.addEventListener("keydown", function (e) {
+        if (e.target.classList.contains("tl-nom") && e.key === "Enter") {
+            e.preventDefault();
+            e.target.blur();
+        }
+    });
+    elTiers.addEventListener("paste", function (e) {
+        if (e.target.classList.contains("tl-nom")) {
+            e.preventDefault();
+            const texte = (e.clipboardData || window.clipboardData).getData("text").replace(/\s+/g, " ");
+            document.execCommand("insertText", false, texte);
+        }
+    });
+
+    document.getElementById("tl-ajouter").addEventListener("click", function () {
+        const tiers = lire();
+        if (tiers.length >= MAX_CLASSES) { message("Maximum " + MAX_CLASSES + " classes."); return; }
+        tiers.push({ nom: "Nouvelle", couleur: COULEURS[tiers.length % COULEURS.length], ids: [] });
+        message("");
+        construire(tiers);
+        sauver();
+        const noms = elTiers.querySelectorAll(".tl-nom");
+        noms[noms.length - 1].focus();
+    });
+
+    document.getElementById("tl-vider").addEventListener("click", function () {
+        const tiers = lire();
+        tiers.forEach(function (t) { t.ids = []; });
+        construire(tiers);
+        sauver();
+    });
+
+    document.getElementById("tl-reset").addEventListener("click", function () {
+        if (!confirm("Remettre les classes S, A, B, C, D et vider le classement ?")) return;
+        elTitre.value = "Ma tier list";
+        construire(DEFAUT.map(function (t) { return { nom: t.nom, couleur: t.couleur, ids: [] }; }));
+        sauver();
+    });
+
+    elTitre.addEventListener("input", sauver);
+    elRecherche.addEventListener("input", appliquerFiltre);
+
+    // ---------- Glisser-déposer ----------
+    function apresDeplacement() { appliquerFiltre(); sauver(); }
+
+    function zoneSous(x, y) {
+        const el = document.elementFromPoint(x, y);
+        return el ? el.closest(".tl-zone") : null;
+    }
+
+    // Où insérer dans la zone ? Avant la première tuile située après le pointeur.
+    function repere(zone, tuile, x, y) {
+        const tuiles = Array.from(zone.children).filter(function (t) {
+            return t !== tuile && !t.classList.contains("cache");
+        });
+        for (const t of tuiles) {
+            const r = t.getBoundingClientRect();
+            if (y < r.top || (y <= r.bottom && x < r.left + r.width / 2)) return t;
+        }
+        return null;
+    }
+
+    function placer() {
+        if (!glisse || !glisse.actif) return;
+        glisse.fantome.style.left = glisse.x - glisse.dx + "px";
+        glisse.fantome.style.top = glisse.y - glisse.dy + "px";
+        const zone = zoneSous(glisse.x, glisse.y);
+        if (!zone) return;
+        const ref = repere(zone, glisse.tuile, glisse.x, glisse.y);
+        if (glisse.tuile.parentNode !== zone || glisse.tuile.nextElementSibling !== ref) {
+            zone.insertBefore(glisse.tuile, ref);
+        }
+    }
+
+    function demarrerGlisse() {
+        selectionner(null);
+        const r = glisse.tuile.getBoundingClientRect();
+        glisse.dx = glisse.x0 - r.left;
+        glisse.dy = glisse.y0 - r.top;
+        glisse.fantome = glisse.tuile.cloneNode(true);
+        glisse.fantome.classList.add("bz-fantome");
+        glisse.fantome.style.width = r.width + "px";
+        document.body.append(glisse.fantome);
+        glisse.tuile.classList.add("fantome");
+        glisse.actif = true;
+        // défilement automatique près des bords de l'écran
+        glisse.minuteur = setInterval(function () {
+            if (glisse.y < 70) window.scrollBy(0, -14);
+            else if (glisse.y > window.innerHeight - 70) window.scrollBy(0, 14);
+            placer();
+        }, 16);
+    }
+
+    function finirGlisse() {
+        clearInterval(glisse.minuteur);
+        glisse.fantome.remove();
+        glisse.tuile.classList.remove("fantome");
+        apresDeplacement();
+    }
+
+    document.addEventListener("pointerdown", function (e) {
+        const tuile = e.target.closest(".bz");
+        // le tactile garde le défilement normal : il utilise « clic sur le brawler, puis sur la classe »
+        if (!tuile || e.button !== 0 || e.pointerType === "touch") return;
+        e.preventDefault();
+        glisse = { tuile: tuile, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, actif: false };
+    });
+
+    document.addEventListener("pointermove", function (e) {
+        if (!glisse) return;
+        glisse.x = e.clientX;
+        glisse.y = e.clientY;
+        if (!glisse.actif) {
+            if (Math.hypot(glisse.x - glisse.x0, glisse.y - glisse.y0) < 5) return;
+            demarrerGlisse();
+        }
+        placer();
+    });
+
+    function lacher() {
+        if (!glisse) return;
+        if (glisse.actif) {
+            finirGlisse();
+            bloquerClic = true;                       // ce lâcher n'est pas un clic
+            setTimeout(function () { bloquerClic = false; }, 0);
+        }
+        glisse = null;
+    }
+    document.addEventListener("pointerup", lacher);
+    document.addEventListener("pointercancel", lacher);
+    document.addEventListener("dragstart", function (e) { if (e.target.closest && e.target.closest(".bz")) e.preventDefault(); });
+
+    // ---------- Clic : choisir un brawler puis une classe ----------
+    function selectionner(tuile) {
+        if (selection) selection.classList.remove("selectionne");
+        selection = tuile;
+        if (selection) selection.classList.add("selectionne");
+    }
+
+    document.addEventListener("click", function (e) {
+        if (bloquerClic) return;
+        const tuile = e.target.closest(".bz");
+        const zone = e.target.closest(".tl-zone");
+
+        if (selection && zone && tuile !== selection) {
+            // une autre tuile de la même zone : on change simplement de sélection
+            if (tuile && tuile.parentNode === selection.parentNode) { selectionner(tuile); return; }
+            zone.insertBefore(selection, tuile || null);
+            selectionner(null);
+            apresDeplacement();
+            return;
+        }
+        if (tuile) { selectionner(tuile === selection ? null : tuile); return; }
+        if (!e.target.closest("button, input, .tl-nom")) selectionner(null);
+    });
+
+    // ---------- Démarrage ----------
+    elPile.textContent = "Chargement des brawlers...";
+    fetch("/api/brawlers")
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+            if (!res.ok) throw new Error(res.d.erreur || "Erreur");
+            brawlers = res.d.brawlers;
+            brawlers.forEach(function (b) { parId[b.id] = b; });
+            construire(charger());
+        })
+        .catch(function () {
+            elPile.textContent = "";
+            message("Impossible de charger la liste des brawlers pour le moment. Recharge la page dans un instant.");
+        });
+})();
+</script>
 {% endblock %}
